@@ -20,7 +20,7 @@ URLS = {
     "RUT":"https://finance.yahoo.com/quote/%5ERUT/history?p=%5ERUT"
 }
 
-EXCEL_FILE = "s.xlsx"
+EXCEL_FILE = "sample_HK.xlsx"
 END_DATE = datetime.today()
 START_DATE = END_DATE - timedelta(days=30)
 
@@ -28,7 +28,7 @@ START_DATE = END_DATE - timedelta(days=30)
 # STREAMLIT APP
 # --------------------
 st.title("Yahoo Finance Auto-Updater")
-st.write("Fetches S&P500, Dow Jones, Nasdaq and updates Excel with newest data on top.")
+st.write("Fetch data.")
 
 if st.button("Fetch & Update Data"):
 
@@ -146,49 +146,52 @@ if st.button("Fetch & Update Data"):
             wb = Workbook()
 
         for sheet_name, df in existing_sheets.items():
+            # Skip empty or invalid DataFrames
+            if df is None or df.empty or "Date" not in df.columns:
+                continue
+
             if sheet_name in wb.sheetnames:
                 ws = wb[sheet_name]
             else:
                 ws = wb.create_sheet(sheet_name)
 
             start_col = 66  # BN
-            start_row = 2   # headers row
+            start_row = 2  # first data row (no headers)
 
-            # Ensure column types
+            # Ensure correct types
             df["Date"] = df["Date"].astype(str)
             for col in ["Open", "High", "Low", "Close", "Adj Close"]:
-                df[col] = pd.to_numeric(df[col], errors="coerce").astype(float)
-            df["Volume"] = pd.to_numeric(df["Volume"], errors="coerce").astype("Int64")
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors="coerce").astype(float)
+            if "Volume" in df.columns:
+                df["Volume"] = pd.to_numeric(df["Volume"], errors="coerce").astype("Int64")
 
-            # Sort descending
+            # Sort newest first
             df = df.sort_values("Date", ascending=False).reset_index(drop=True)
 
             # Collect existing dates
             existing_dates = set()
-            for r in ws.iter_rows(min_row=start_row+1, min_col=start_col, max_col=start_col, values_only=True):
+            for r in ws.iter_rows(min_row=start_row, min_col=start_col, max_col=start_col, values_only=True):
                 if r[0] is not None:
                     existing_dates.add(str(r[0]))
 
-            # Write headers
-            for i, col_name in enumerate(df.columns, start=start_col):
-                ws.cell(row=start_row, column=i, value=col_name)
-
-            # Insert missing rows at top (row 3)
-            row_pointer = start_row + 1
+            # Insert only missing rows at top
+            row_pointer = start_row
             for _, row in df.iterrows():
                 if row["Date"] in existing_dates:
                     continue
                 ws.insert_rows(row_pointer)
                 ws.cell(row=row_pointer, column=start_col, value=row["Date"])
-                ws.cell(row=row_pointer, column=start_col+1, value=float(row["Open"]))
-                ws.cell(row=row_pointer, column=start_col+2, value=float(row["High"]))
-                ws.cell(row=row_pointer, column=start_col+3, value=float(row["Low"]))
-                ws.cell(row=row_pointer, column=start_col+4, value=float(row["Close"]))
-                ws.cell(row=row_pointer, column=start_col+5, value=float(row["Adj Close"]))
+                ws.cell(row=row_pointer, column=start_col + 1, value=float(row["Open"]))
+                ws.cell(row=row_pointer, column=start_col + 2, value=float(row["High"]))
+                ws.cell(row=row_pointer, column=start_col + 3, value=float(row["Low"]))
+                ws.cell(row=row_pointer, column=start_col + 4, value=float(row["Close"]))
+                ws.cell(row=row_pointer, column=start_col + 5, value=float(row["Adj Close"]))
                 vol_val = None if pd.isna(row["Volume"]) else int(row["Volume"])
-                ws.cell(row=row_pointer, column=start_col+6, value=vol_val)
+                ws.cell(row=row_pointer, column=start_col + 6, value=vol_val)
 
         wb.save(file_path)
+
 
     save_to_excel(existing_sheets, EXCEL_FILE)
     driver.quit()
